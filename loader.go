@@ -28,6 +28,9 @@ func LoadBms(path string) (bmsData BmsData, err error) {
 	return _loadBms(path)
 }
 
+var COMMANDS = []string{"title", "subtitle", "playlevel", "difficulty", "artist", "genre"}
+var INDEXED_COMMANDS = []string{"wav", "bmp" /*, "bpm", "stop", "scroll"*/}
+
 func _loadBms(path string) (bmsData BmsData, _ error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -45,6 +48,7 @@ func _loadBms(path string) (bmsData BmsData, _ error) {
 
 	bmsData = NewBmsData()
 	bmsData.Path = path
+	bmsData.UniqueBmsData = NewUniqueBmsData()
 	chmap := map[string]bool{"7k": false, "10k": false, "14k": false}
 	for scanner.Scan() {
 		line, _, err := transform.String(japanese.ShiftJIS.NewDecoder(), scanner.Text())
@@ -52,20 +56,45 @@ func _loadBms(path string) (bmsData BmsData, _ error) {
 			return bmsData, fmt.Errorf("ShiftJIS decode error: %w", err)
 		}
 
-		// TODO 小文字に対応 (#title,#difficultyなど)
-		if strings.HasPrefix(line, "#TITLE") {
-			bmsData.Title = strings.Trim(line[6:], " ")
-		} else if strings.HasPrefix(line, "#SUBTITLE") {
-			bmsData.Subtitle = strings.Trim(line[9:], " ")
-		} else if strings.HasPrefix(line, "#PLAYLEVEL") {
-			bmsData.Playlevel = strings.Trim(line[10:], " ")
-		} else if strings.HasPrefix(line, "#DIFFICULTY") {
-			bmsData.Difficulty = strings.Trim(line[11:], " ")
-		} else if strings.HasPrefix(line, "#ARTIST") {
-			bmsData.Artist = strings.Trim(line[7:], " ")
-		} else if strings.HasPrefix(line, "#GENRE") {
-			bmsData.Genre = strings.Trim(line[6:], " ")
-		} else if regexp.MustCompile(`#[0-9]{5}:.+`).MatchString(line) {
+		for _, command := range COMMANDS {
+			if strings.HasPrefix(strings.ToLower(line), "#"+command) {
+				value := strings.TrimSpace(line[len(command)+1:])
+
+				switch command {
+				case "title":
+					bmsData.Title = value
+				case "subtitle":
+					bmsData.Subtitle = value
+				case "playlevel":
+					bmsData.Playlevel = value
+				case "difficulty":
+					bmsData.Difficulty = value
+				case "artist":
+					bmsData.Artist = value
+				case "genre":
+					bmsData.Genre = value
+				}
+				goto lineReadComplete
+			}
+		}
+
+		for _, command := range INDEXED_COMMANDS {
+			if regexp.MustCompile(`#` + command + `[0-9a-z]{2} .+`).MatchString(strings.ToLower(line)) {
+				index := line[1+len(command) : 1+len(command)+2]
+				value := strings.TrimSpace(line[1+len(command)+3:])
+
+				switch command {
+				case "wav":
+					bmsData.UniqueBmsData.WavDefs[index] = value
+				case "bmp":
+					bmsData.UniqueBmsData.BmpDefs[index] = value
+				}
+				goto lineReadComplete
+			}
+		}
+
+		// TODO オブジェも読む？
+		if regexp.MustCompile(`#[0-9]{3}[0-9a-z]{2}:.+`).MatchString(line) {
 			chint, _ := strconv.Atoi(line[4:6])
 			if (chint >= 18 && chint <= 19) || (chint >= 38 && chint <= 39) {
 				chmap["7k"] = true
@@ -80,6 +109,8 @@ func _loadBms(path string) (bmsData BmsData, _ error) {
 				// TODO キーモード毎に検出範囲を変える
 			}
 		}
+
+	lineReadComplete:
 	}
 	if scanner.Err() != nil {
 		return bmsData, fmt.Errorf("bmsData scan error: %w", scanner.Err())

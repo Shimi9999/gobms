@@ -12,6 +12,30 @@ type BmsData struct {
 	Md5        string
 	Sha256     string
 	TotalNotes int
+
+	UniqueBmsData   *UniqueBmsData
+	UniqueBmsonData *UniqueBmsonData
+}
+
+type UniqueBmsData struct {
+	WavDefs map[string]string
+	BmpDefs map[string]string
+	//WavObjs []
+}
+
+func NewUniqueBmsData() *UniqueBmsData {
+	var data UniqueBmsData
+	data.WavDefs = map[string]string{}
+	data.BmpDefs = map[string]string{}
+	return &data
+}
+
+/*type indexedValue struct {
+	Index string
+	Value string
+}*/
+
+type UniqueBmsonData struct {
 }
 
 func NewBmsData() BmsData {
