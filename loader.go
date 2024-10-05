@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,7 +20,7 @@ func LoadBms(path string) (bmsData BmsData, err error) {
 	if IsBmsonPath(path) {
 		bmsData, err = LoadBmson(path)
 		if err != nil {
-			return bmsData, err
+			return bmsData, fmt.Errorf("LoadBmson: %w", err)
 		}
 		return bmsData, nil
 	}
@@ -34,7 +33,7 @@ var INDEXED_COMMANDS = []string{"wav", "bmp" /*, "bpm", "stop", "scroll"*/}
 func _loadBms(path string) (bmsData BmsData, _ error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return bmsData, fmt.Errorf("bmsData open error: %w", err)
+		return bmsData, fmt.Errorf("bmsData Open: %w", err)
 	}
 	defer file.Close()
 
@@ -53,7 +52,7 @@ func _loadBms(path string) (bmsData BmsData, _ error) {
 	for scanner.Scan() {
 		line, _, err := transform.String(japanese.ShiftJIS.NewDecoder(), scanner.Text())
 		if err != nil {
-			return bmsData, fmt.Errorf("ShiftJIS decode error: %w", err)
+			return bmsData, fmt.Errorf("ShiftJIS decode: %w", err)
 		}
 
 		for _, command := range COMMANDS {
@@ -132,21 +131,21 @@ func _loadBms(path string) (bmsData BmsData, _ error) {
 
 	bmsData.Md5, bmsData.Sha256, err = getFileHash(path)
 	if err != nil {
-		return bmsData, fmt.Errorf("Get bmshash error: %w", err)
+		return bmsData, fmt.Errorf("getFileHash: %w", err)
 	}
 
 	return bmsData, nil
 }
 
 func LoadBmson(path string) (bmsData BmsData, _ error) {
-	bytes, err := ioutil.ReadFile(path)
+	bytes, err := os.ReadFile(path)
 	if err != nil {
-		return bmsData, fmt.Errorf("BMSONfile open error: %w", err)
+		return bmsData, fmt.Errorf("ReadFile: %w", err)
 	}
 
 	var bmson Bmson
 	if err := json.Unmarshal(bytes, &bmson); err != nil {
-		return bmsData, fmt.Errorf("BMSONfile unmarshal error: %w", err)
+		return bmsData, fmt.Errorf("Unmarshal: %w", err)
 	}
 
 	bmsData = NewBmsData()
@@ -167,7 +166,7 @@ func LoadBmson(path string) (bmsData BmsData, _ error) {
 
 	_, bmsData.Sha256, err = getFileHash(path)
 	if err != nil {
-		return bmsData, fmt.Errorf("Get bmshash error: %w", err)
+		return bmsData, fmt.Errorf("getFileHash: %w", err)
 	}
 
 	bmsData.TotalNotes = 1 // TODO ちゃんとトータルノーツ数える
@@ -178,7 +177,7 @@ func LoadBmson(path string) (bmsData BmsData, _ error) {
 func getFileHash(path string) (string, string, error) {
 	bmsStr, err := loadFileString(path)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("loadFileString (%s): %w", path, err)
 	}
 	md5 := fmt.Sprintf("%x", md5.Sum([]byte(bmsStr)))
 	sha256 := fmt.Sprintf("%x", sha256.Sum256([]byte(bmsStr)))
@@ -189,7 +188,7 @@ func getFileHash(path string) (string, string, error) {
 func loadFileString(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("File open error: %w", err)
+		return "", fmt.Errorf("File Open: %w", err)
 	}
 	defer file.Close()
 
@@ -201,7 +200,7 @@ func loadFileString(path string) (string, error) {
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("File read error: %w", err)
+			return "", fmt.Errorf("File Read: %w", err)
 		}
 
 		str += string(buf[:n])
@@ -212,7 +211,7 @@ func loadFileString(path string) (string, error) {
 func LoadBmsInDirectory(path string) (BmsDirectory, error) {
 	bmsdirectory := NewBmsDirectory()
 	bmsdirectory.Path = path
-	files, _ := ioutil.ReadDir(path)
+	files, _ := os.ReadDir(path)
 	for _, f := range files {
 		if IsBmsPath(f.Name()) {
 			var bmsData BmsData
@@ -220,7 +219,7 @@ func LoadBmsInDirectory(path string) (BmsDirectory, error) {
 			bmspath := filepath.Join(path, f.Name())
 			bmsData, err = LoadBms(bmspath)
 			if err != nil {
-				return NewBmsDirectory(), err
+				return NewBmsDirectory(), fmt.Errorf("LoadBms (%s): %w", bmspath, err)
 			}
 			if bmsData.TotalNotes > 0 {
 				bmsdirectory.BmsDataSet = append(bmsdirectory.BmsDataSet, bmsData)
@@ -235,13 +234,13 @@ func LoadBmsInDirectory(path string) (BmsDirectory, error) {
 }
 
 func FindBmsInDirectory(path string, bmsdirs *[]BmsDirectory) error {
-	files, _ := ioutil.ReadDir(path)
+	files, _ := os.ReadDir(path)
 	bmsExist := false
 	for _, f := range files {
 		if IsBmsPath(f.Name()) {
 			bmsdirectory, err := LoadBmsInDirectory(path)
 			if err != nil {
-				return err
+				return fmt.Errorf("LoadBmsInDirectory (%s): %w", path, err)
 			}
 			*bmsdirs = append(*bmsdirs, bmsdirectory)
 			bmsExist = true
@@ -251,7 +250,8 @@ func FindBmsInDirectory(path string, bmsdirs *[]BmsDirectory) error {
 	if !bmsExist {
 		for _, f := range files {
 			if f.IsDir() {
-				err := FindBmsInDirectory(filepath.Join(path, f.Name()), bmsdirs)
+				dirPath := filepath.Join(path, f.Name())
+				err := FindBmsInDirectory(dirPath, bmsdirs)
 				if err != nil {
 					return err
 				}
